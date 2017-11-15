@@ -23,7 +23,8 @@ It's roughly similar to the one Brandon Heller did for NOX.
 
 from pox.core import core
 import pox.openflow.libopenflow_01 as of
-
+from pox.lib.addresses import IPAddr
+import pox.lib.packet as pkt
 log = core.getLogger()
 
 
@@ -32,20 +33,43 @@ class Tutorial (object):
   """
   A Tutorial object is created for each switch that connects.
   A Connection object for that switch is passed to the __init__ function.
-  """
-  def __init__ (self, connection):
+  """ 
+  def __init__ (self, connection, source, dest, source_port, dest_port, protocol): 
+    # Enviando regras do firewall de acordo com os parametros recebidos
+    self.send_rules(connection, source, dest, source_port, dest_port, protocol)
+
     # Keep track of the connection to the switch so that we can
     # send it messages!
+    
     self.connection = connection
-
+  
     # This binds our PacketIn event listener
     connection.addListeners(self)
 
     # Use this table to keep track of which ethernet address is on
     # which switch port (keys are MACs, values are ports).
     self.mac_to_port = {}
-
-
+    
+  def send_rules(self, connection, source, dest, source_port, dest_port, protocol): 
+    log.debug("Sending firewall rules to the switch")
+    msg = of.ofp_flow_mod()
+    msg.match = of.ofp_match()
+    msg.match.dl_type = pkt.ethernet.IP_TYPE
+    if (source): msg.match.nw_src = IPAddr(source)
+    if (dest): msg.match.nw_dst = IPAddr(dest)
+    if (source_port): msg.match.tp_src = int(source_port)
+    if (dest_port): msg.match.tp_dst = int(dest_port)
+    if (protocol == "tcp"): msg.match.nw_proto = pkt.ipv4.TCP_PROTOCOL
+    elif (protocol == "udp"): msg.match.nw_proto = pkt.ipv4.UDP_PROTOCOL
+    
+    if ((source_port or dest_port) and not protocol):
+      msg.match.nw_proto = pkt.ipv4.TCP_PROTOCOL
+      connection.send(msg)
+      msg.match.nw_proto = pkt.ipv4.UDP_PROTOCOL
+    if (source or dest or source_port or dest_port or protocol):
+      connection.send(msg)
+      
+ 
   def resend_packet (self, packet_in, out_port):
     """
     Instructs the switch to resend a packet that it had sent to us.
@@ -84,40 +108,44 @@ class Tutorial (object):
     Implement switch-like behavior.
     """
 
-    """ # DELETE THIS LINE TO START WORKING ON THIS (AND THE ONE BELOW!) #
-
     # Here's some psuedocode to start you off implementing a learning
     # switch.  You'll need to rewrite it as real Python code.
 
     # Learn the port for the source MAC
-    self.mac_to_port ... <add or update entry>
+    in_port = packet_in.in_port
+    self.mac_to_port[packet.src] = in_port
 
-    if the port associated with the destination MAC of the packet is known:
+    if packet.dst in self.mac_to_port:
+      out_port = self.mac_to_port[packet.dst]
+       
       # Send packet out the associated port
-      self.resend_packet(packet_in, ...)
-
+      #self.resend_packet(packet_in, out_port)
+      
       # Once you have the above working, try pushing a flow entry
       # instead of resending the packet (comment out the above and
       # uncomment and complete the below.)
 
-      log.debug("Installing flow...")
+      log.debug("Installing flow: ")
+      log.debug(" in_port=" + str(in_port) + " src=" + str(packet.src) + " dst=" + str(packet.dst) + " out_port=" + str(out_port))
       # Maybe the log statement should have source/destination/port?
 
-      #msg = of.ofp_flow_mod()
+      msg = of.ofp_flow_mod()
       #
       ## Set fields to match received packet
-      #msg.match = of.ofp_match.from_packet(packet)
+      msg.match = of.ofp_match()
+      msg.match.dl_src = packet.src
+      msg.match.dl_dst = packet.dst
+      msg.in_port = in_port
       #
       #< Set other fields of flow_mod (timeouts? buffer_id?) >
       #
       #< Add an output action, and send -- similar to resend_packet() >
-
+      msg.actions.append(of.ofp_action_output(port = out_port))
+      self.connection.send(msg)
     else:
       # Flood the packet out everything but the input port
       # This part looks familiar, right?
       self.resend_packet(packet_in, of.OFPP_ALL)
-
-    """ # DELETE THIS LINE TO START WORKING ON THIS #
 
 
   def _handle_PacketIn (self, event):
@@ -129,21 +157,23 @@ class Tutorial (object):
     if not packet.parsed:
       log.warning("Ignoring incomplete packet")
       return
-
+    
     packet_in = event.ofp # The actual ofp_packet_in message.
-
+    
+    #log.debug("dir(packet) = " + str(dir(packet)))
+    #log.debug("dir(packet_in) = " + str(dir(packet_in)))
+   	
     # Comment out the following line and uncomment the one after
     # when starting the exercise.
-    self.act_like_hub(packet, packet_in)
-    #self.act_like_switch(packet, packet_in)
+    #self.act_like_hub(packet, packet_in)
+    self.act_like_switch(packet, packet_in)
 
 
-
-def launch ():
+def launch (source=False, dest=False, source_port=False, dest_port=False, protocol=False):
   """
   Starts the component
-  """
+  """ 
   def start_switch (event):
     log.debug("Controlling %s" % (event.connection,))
-    Tutorial(event.connection)
+    Tutorial(event.connection, source, dest, source_port, dest_port, protocol)
   core.openflow.addListenerByName("ConnectionUp", start_switch)
