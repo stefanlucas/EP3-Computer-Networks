@@ -24,7 +24,7 @@ It's roughly similar to the one Brandon Heller did for NOX.
 from pox.core import core
 import pox.openflow.libopenflow_01 as of
 from pox.lib.addresses import IPAddr
-
+import pox.lib.packet as pkt
 log = core.getLogger()
 
 
@@ -51,21 +51,21 @@ class Tutorial (object):
     self.mac_to_port = {}
     
   def send_rules(self, connection, source, dest, source_port, dest_port, protocol): 
+    log.debug("Sending firewall rules to the switch")
     msg = of.ofp_flow_mod()
     msg.match = of.ofp_match()
-    msg.match.dl_type = 0x800
-    
+    msg.match.dl_type = pkt.ethernet.IP_TYPE
     if (source): msg.match.nw_src = IPAddr(source)
     if (dest): msg.match.nw_dst = IPAddr(dest)
     if (source_port): msg.match.tp_src = int(source_port)
     if (dest_port): msg.match.tp_dst = int(dest_port)
-    if (protocol == "tcp"): msg.match.nw_proto = 6
-    elif (protocol == "udp"): msg.match.nw_proto = 17
+    if (protocol == "tcp"): msg.match.nw_proto = pkt.ipv4.TCP_PROTOCOL
+    elif (protocol == "udp"): msg.match.nw_proto = pkt.ipv4.UDP_PROTOCOL
     
     if ((source_port or dest_port) and not protocol):
-      msg.match.nw_proto = 6
+      msg.match.nw_proto = pkt.ipv4.TCP_PROTOCOL
       connection.send(msg)
-      msg.match.nw_proto = 17
+      msg.match.nw_proto = pkt.ipv4.UDP_PROTOCOL
     if (source or dest or source_port or dest_port or protocol):
       connection.send(msg)
       
