@@ -66,7 +66,8 @@ class Tutorial (object):
       msg.match.nw_proto = 6
       connection.send(msg)
       msg.match.nw_proto = 17
-    connection.send(msg)
+    if (source or dest or source_port or dest_port or protocol):
+      connection.send(msg)
       
  
   def resend_packet (self, packet_in, out_port):
